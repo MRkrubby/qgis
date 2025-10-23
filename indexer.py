@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from qgis.PyQt.QtCore import QObject, pyqtSignal
+from qgis.PyQt.QtCore import pyqtSignal
 from qgis.core import QgsTask, QgsProject, QgsWkbTypes, QgsSpatialIndex, QgsFeature, QgsGeometry, QgsPointXY
 
 class IndexBundle:
@@ -22,6 +22,7 @@ class CentroidIndexTask(QgsTask):
 
         id_to_point = {}
         idx = QgsSpatialIndex()
+        running_id = 0
 
         for lyr in QgsProject.instance().mapLayers().values():
             if self.only_visible and lyr.id() not in vis_ids:
@@ -31,13 +32,21 @@ class CentroidIndexTask(QgsTask):
                     for f in lyr.getFeatures():
                         if self.isCanceled(): return False
                         g = f.geometry()
-                        if not g: continue
-                        c = g.centroid().asPoint()
-                        pt = QgsPointXY(c)
-                        id_to_point[f.id()] = pt
+                        if not g or g.isEmpty():
+                            continue
+                        centroid_geom = g.centroid()
+                        if centroid_geom.isEmpty():
+                            continue
+                        try:
+                            pt = QgsPointXY(centroid_geom.asPoint())
+                        except Exception:
+                            continue
+                        id_to_point[running_id] = pt
                         tmp = QgsFeature()
+                        tmp.setId(running_id)
                         tmp.setGeometry(QgsGeometry.fromPointXY(pt))
                         idx.insertFeature(tmp)
+                        running_id += 1
             except Exception:
                 continue
 
