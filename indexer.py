@@ -1,17 +1,6 @@
 # -*- coding: utf-8 -*-
 from qgis.PyQt.QtCore import pyqtSignal
-from qgis.core import (
-    QgsTask,
-    QgsProject,
-    QgsWkbTypes,
-    QgsSpatialIndex,
-    QgsFeature,
-    QgsGeometry,
-    QgsPointXY,
-    QgsFeatureRequest,
-    QgsVectorLayer,
-    QgsCoordinateTransform,
-)
+from qgis.core import QgsTask, QgsProject, QgsWkbTypes, QgsSpatialIndex, QgsFeature, QgsGeometry, QgsPointXY
 
 class IndexBundle:
     def __init__(self):
@@ -45,32 +34,6 @@ class CentroidIndexTask(QgsTask):
         id_to_point = {}
         idx = QgsSpatialIndex()
         running_id = 0
-        seen_coords = set()
-
-        def add_point(pt_xy):
-            nonlocal running_id
-            if pt_xy is None:
-                return
-            key = (round(pt_xy.x(), 6), round(pt_xy.y(), 6))
-            if key in seen_coords:
-                return
-            seen_coords.add(key)
-            id_to_point[running_id] = pt_xy
-            feature = QgsFeature()
-            feature.setId(running_id)
-            feature.setGeometry(QgsGeometry.fromPointXY(pt_xy))
-            idx.insertFeature(feature)
-            running_id += 1
-
-        for layer in QgsProject.instance().mapLayers().values():
-            if self.only_visible and layer.id() not in vis_ids:
-                continue
-
-            if not isinstance(layer, QgsVectorLayer):
-                continue
-
-            if not layer.isValid():
-                continue
 
             if layer.wkbType() == QgsWkbTypes.NoGeometry:
                 continue
@@ -96,42 +59,25 @@ class CentroidIndexTask(QgsTask):
                     pass
 
             try:
-                for feature in layer.getFeatures(request):
-                    if self.isCanceled():
-                        return False
-
-                    geom = feature.geometry()
-                    if not geom or geom.isEmpty():
-                        continue
-
-                    def maybe_transform(pt):
-                        if transformer is None:
-                            return pt
+                if hasattr(lyr, "geometryType") and lyr.geometryType() == QgsWkbTypes.PolygonGeometry:
+                    for f in lyr.getFeatures():
+                        if self.isCanceled(): return False
+                        g = f.geometry()
+                        if not g or g.isEmpty():
+                            continue
+                        centroid_geom = g.centroid()
+                        if centroid_geom.isEmpty():
+                            continue
                         try:
-                            return transformer.transform(pt)
-                        except Exception:
-                            return None
-
-                    try:
-                        for vertex in geom.vertices():
-                            pt_xy = QgsPointXY(vertex)
-                            add_point(maybe_transform(pt_xy))
-                    except Exception:
-                        # Fall back to single-point conversion if iteration fails
-                        try:
-                            pt_xy = QgsPointXY(geom.asPoint())
-                            add_point(maybe_transform(pt_xy))
+                            pt = QgsPointXY(centroid_geom.asPoint())
                         except Exception:
                             continue
-
-                    if QgsWkbTypes.geometryType(layer.wkbType()) == QgsWkbTypes.PolygonGeometry:
-                        try:
-                            centroid_geom = geom.centroid()
-                            if centroid_geom and not centroid_geom.isEmpty():
-                                pt_xy = QgsPointXY(centroid_geom.asPoint())
-                                add_point(maybe_transform(pt_xy))
-                        except Exception:
-                            continue
+                        id_to_point[running_id] = pt
+                        tmp = QgsFeature()
+                        tmp.setId(running_id)
+                        tmp.setGeometry(QgsGeometry.fromPointXY(pt))
+                        idx.insertFeature(tmp)
+                        running_id += 1
             except Exception:
                 continue
 
