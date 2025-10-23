@@ -42,11 +42,11 @@ class SnapZenProPlugin(QObject):
         self.action_toggle.setCheckable(True)
         self.action_toggle.toggled.connect(self._on_toggle)
 
-        self.action_settings = QAction(icon_settings, "Open SnapZen Settings", self.iface.mainWindow())
-        self.action_settings.setToolTip("Show the SnapZen settings panel")
+        self.action_settings = QAction(icon_settings, "Settings", self.iface.mainWindow())
+        self.action_settings.setToolTip("Open SnapZen Pro settings")
         self.action_settings.triggered.connect(self._show_settings)
 
-        self.action_rebuild = QAction("Rebuild centroid index", self.iface.mainWindow())
+        self.action_rebuild = QAction("Rebuild quick snap index", self.iface.mainWindow())
         self.action_rebuild.triggered.connect(self._rebuild_centroids)
 
         # Add to toolbar
@@ -109,13 +109,18 @@ class SnapZenProPlugin(QObject):
         s = self.ui.get_settings()
         self.tool = SnapZenProTool(self.iface, settings=s, index_bundle=self.index_bundle)
         self.canvas.setMapTool(self.tool)
-        if s.get("snap_centroids", False) and s.get("build_centroid_index", True):
+        if self._should_build_index(s):
             self._rebuild_centroids()
 
     def _rebuild_centroids_if_enabled(self):
         s = self.ui.get_settings()
-        if s.get("snap_centroids", False) and s.get("build_centroid_index", True):
+        if self._should_build_index(s):
             self._rebuild_centroids()
+
+    def _should_build_index(self, settings):
+        use_fallback = settings.get("use_fallback_index", settings.get("snap_centroids", False))
+        build_index = settings.get("build_fallback_index", settings.get("build_centroid_index", True))
+        return use_fallback and build_index
 
     def _rebuild_centroids(self):
         task = CentroidIndexTask(self.iface, only_visible=True)
