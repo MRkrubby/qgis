@@ -1,0 +1,12 @@
+[general]
+name=SnapZen Pro
+qgisMinimumVersion=3.16
+qgisMaximumVersion=3.99
+description=Reliable snapping tool with toolbar, icons, menu, and a full settings dock. Uses a local QgsSnappingConfig and has a self-owned QgsSnappingUtils fallback.
+about=SnapZen Pro offers precise snapping on vertices and segments, lightweight CPU via debounced mouse events, and an optional centroid fallback built in a background task. It includes a toolbar with icons, a Plugins menu entry, and a persistent settings dock.
+version=1.2.4
+author=ChatGPT
+email=example@example.com
+homepage=
+experimental=False
+deprecated=False
