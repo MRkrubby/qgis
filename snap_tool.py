@@ -25,6 +25,11 @@ class SnapZenProTool(QgsMapTool):
         self._snapper = None
         self._configure_local_snapping()
 
+    def _use_fallback(self):
+        if not self.settings:
+            return False
+        return self.settings.get("use_fallback_index", self.settings.get("snap_centroids", False))
+
     def set_index_bundle(self, bundle):
         self._index_bundle = bundle
 
@@ -60,6 +65,12 @@ class SnapZenProTool(QgsMapTool):
         except Exception:
             self._snapper = QgsSnappingUtils(self.canvas)
 
+        if hasattr(self._snapper, "setConfig"):
+            try:
+                self._snapper.setConfig(local)
+            except Exception:
+                pass
+
     def canvasMoveEvent(self, e):
         self._last_pos = e.pos()
         self._debounce_timer.start(max(0, int(self.settings.get("debounce_ms",10))))
@@ -78,9 +89,13 @@ class SnapZenProTool(QgsMapTool):
         except Exception:
             pass
 
-        # Fallback: centroid index
-        if self.settings.get("snap_centroids", False) and self._index_bundle and self._index_bundle.centroid_index:
-            idx = self._index_bundle.centroid_index
+        # Fallback: cached point index built in Python
+        bundle_index = None
+        if self._index_bundle:
+            bundle_index = getattr(self._index_bundle, "point_index", None) or getattr(self._index_bundle, "centroid_index", None)
+
+        if self._use_fallback() and bundle_index:
+            idx = bundle_index
             ids = idx.nearestNeighbor(map_pt, 1)
             if ids:
                 mu_tol = self._mu_tolerance()
