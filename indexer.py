@@ -1,18 +1,6 @@
 # -*- coding: utf-8 -*-
 from qgis.PyQt.QtCore import pyqtSignal
-from qgis.core import (
-    QgsTask,
-    QgsProject,
-    QgsWkbTypes,
-    QgsSpatialIndex,
-    QgsFeature,
-    QgsGeometry,
-    QgsPointXY,
-    QgsFeatureRequest,
-    QgsVectorLayer,
-    QgsCoordinateTransform,
-)
-
+from qgis.core import QgsTask, QgsProject, QgsWkbTypes, QgsSpatialIndex, QgsFeature, QgsGeometry, QgsPointXY
 
 class IndexBundle:
     def __init__(self):
@@ -27,7 +15,6 @@ class IndexBundle:
     def centroid_index(self, value):
         self.point_index = value
 
-
 class CentroidIndexTask(QgsTask):
     completed = pyqtSignal()
 
@@ -39,7 +26,7 @@ class CentroidIndexTask(QgsTask):
 
     def run(self):
         canvas = self.iface.mapCanvas()
-        vis_ids = {layer.id() for layer in canvas.layers()} if self.only_visible else None
+        vis_ids = {l.id() for l in canvas.layers()} if self.only_visible else None
         map_settings = canvas.mapSettings()
         target_extent = map_settings.extent() if map_settings else None
         target_crs = map_settings.destinationCrs() if map_settings else None
@@ -47,46 +34,50 @@ class CentroidIndexTask(QgsTask):
         id_to_point = {}
         idx = QgsSpatialIndex()
         running_id = 0
-        seen_coords = set()
 
-        def add_point(pt_xy):
-            nonlocal running_id
-            if pt_xy is None:
-                return
-            key = (round(pt_xy.x(), 6), round(pt_xy.y(), 6))
-            if key in seen_coords:
-                return
-            seen_coords.add(key)
+            if layer.wkbType() == QgsWkbTypes.NoGeometry:
+                continue
 
-            feature = QgsFeature()
-            feature.setId(running_id)
-            feature.setGeometry(QgsGeometry.fromPointXY(pt_xy))
-            idx.insertFeature(feature)
-            id_to_point[running_id] = pt_xy
-            running_id += 1
+            transformer = None
+            to_layer_transform = None
+            try:
+                if target_crs is not None and target_crs.isValid() and layer.crs() != target_crs:
+                    transformer = QgsCoordinateTransform(layer.crs(), target_crs, QgsProject.instance())
+                    to_layer_transform = QgsCoordinateTransform(target_crs, layer.crs(), QgsProject.instance())
+            except Exception:
+                transformer = None
+                to_layer_transform = None
 
-        for layer in self._candidate_layers(vis_ids):
-            if self.isCanceled():
-                return False
-
-            transformer, request = self._prepare_layer_context(layer, target_crs, target_extent)
+            request = QgsFeatureRequest()
+            if target_extent is not None and not target_extent.isNull():
+                try:
+                    layer_extent = target_extent
+                    if to_layer_transform:
+                        layer_extent = to_layer_transform.transformBoundingBox(target_extent)
+                    request.setFilterRect(layer_extent)
+                except Exception:
+                    pass
 
             try:
-                for feature in layer.getFeatures(request):
-                    if self.isCanceled():
-                        return False
-
-                    geom = feature.geometry()
-                    if not geom or geom.isEmpty():
-                        continue
-
-                    for pt in self._geometry_vertices(geom):
-                        add_point(self._transform_point(transformer, pt))
-
-                    if QgsWkbTypes.geometryType(layer.wkbType()) == QgsWkbTypes.PolygonGeometry:
-                        centroid_point = self._geometry_centroid(geom)
-                        if centroid_point is not None:
-                            add_point(self._transform_point(transformer, centroid_point))
+                if hasattr(lyr, "geometryType") and lyr.geometryType() == QgsWkbTypes.PolygonGeometry:
+                    for f in lyr.getFeatures():
+                        if self.isCanceled(): return False
+                        g = f.geometry()
+                        if not g or g.isEmpty():
+                            continue
+                        centroid_geom = g.centroid()
+                        if centroid_geom.isEmpty():
+                            continue
+                        try:
+                            pt = QgsPointXY(centroid_geom.asPoint())
+                        except Exception:
+                            continue
+                        id_to_point[running_id] = pt
+                        tmp = QgsFeature()
+                        tmp.setId(running_id)
+                        tmp.setGeometry(QgsGeometry.fromPointXY(pt))
+                        idx.insertFeature(tmp)
+                        running_id += 1
             except Exception:
                 # Skip problematic layers silently; the snapping fallback will still work with
                 # the remaining successfully indexed layers.
@@ -99,7 +90,6 @@ class CentroidIndexTask(QgsTask):
         else:
             bundle.point_index = None
             bundle.id_to_point = {}
-
         self.result_bundle = bundle
         return True
 
