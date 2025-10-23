@@ -73,7 +73,11 @@ class SnapZenProTool(QgsMapTool):
 
     def canvasMoveEvent(self, e):
         self._last_pos = e.pos()
-        self._debounce_timer.start(max(0, int(self.settings.get("debounce_ms",10))))
+        try:
+            delay_ms = int(self.settings.get("debounce_ms", 10))
+        except Exception:
+            delay_ms = 10
+        self._debounce_timer.start(max(0, delay_ms))
 
     def _do_snap(self):
         if self._last_pos is None:
