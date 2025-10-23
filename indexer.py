@@ -2,6 +2,30 @@
 from qgis.PyQt.QtCore import pyqtSignal
 from qgis.core import QgsTask, QgsProject, QgsWkbTypes, QgsSpatialIndex, QgsFeature, QgsGeometry, QgsPointXY
 
+from dataclasses import dataclass, field
+from itertools import count
+from typing import Dict, Iterator, Optional, Sequence, Set, Tuple
+
+from qgis.PyQt.QtCore import pyqtSignal
+from qgis.core import (
+    QgsCoordinateReferenceSystem,
+    QgsCoordinateTransform,
+    QgsFeature,
+    QgsFeatureRequest,
+    QgsGeometry,
+    QgsPointXY,
+    QgsProject,
+    QgsSpatialIndex,
+    QgsTask,
+    QgsVectorLayer,
+    QgsWkbTypes,
+)
+
+
+PointKey = Tuple[float, float]
+
+
+@dataclass
 class IndexBundle:
     def __init__(self):
         self.point_index = None
@@ -16,15 +40,21 @@ class IndexBundle:
         self.point_index = value
 
 class CentroidIndexTask(QgsTask):
+    """Collects vertices/centroids from visible layers into an in-memory index."""
+
     completed = pyqtSignal()
 
-    def __init__(self, iface, only_visible=True):
+    def __init__(self, iface, only_visible: bool = True):
         super().__init__("SnapZenPro: Build centroid index", QgsTask.CanCancel)
         self.iface = iface
         self.only_visible = only_visible
-        self.result_bundle = None
+        self.result_bundle: IndexBundle = IndexBundle()
+        self.errors: Sequence[str] = ()
 
-    def run(self):
+    # ------------------------------------------------------------------
+    # QgsTask API
+    # ------------------------------------------------------------------
+    def run(self) -> bool:  # type: ignore[override]
         canvas = self.iface.mapCanvas()
         vis_ids = {l.id() for l in canvas.layers()} if self.only_visible else None
         map_settings = canvas.mapSettings()
@@ -93,7 +123,7 @@ class CentroidIndexTask(QgsTask):
         self.result_bundle = bundle
         return True
 
-    def finished(self, ok):
+    def finished(self, _ok: bool) -> None:  # noqa: D401,ARG002 - signal relay
         self.completed.emit()
 
     def _candidate_layers(self, visible_ids):
