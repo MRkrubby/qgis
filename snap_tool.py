@@ -96,10 +96,7 @@ class SnapZenProTool(QgsMapTool):
         # Fallback: cached point index built in Python
         bundle_index = None
         if self._index_bundle:
-            bundle_index = (
-                getattr(self._index_bundle, "point_index", None)
-                or getattr(self._index_bundle, "centroid_index", None)
-            )
+            bundle_index = getattr(self._index_bundle, "point_index", None) or getattr(self._index_bundle, "centroid_index", None)
 
         if self._use_fallback() and bundle_index:
             idx = bundle_index
